@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>神経コネクト</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            text-align: center;
+            background-color: #f4f4f9;
+        }
+        h1 {
+            color: #333;
+        }
+        #status {
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 20px;
+            padding: 10px;
+            border-radius: 5px;
+            display: inline-block;
+        }
+        .turn-red { background-color: #ffe6e6; color: #cc0000; border: 2px solid #cc0000; }
+        .turn-blue { background-color: #e6e6ff; color: #0000cc; border: 2px solid #0000cc; }
+        
+        #game-board {
+            display: grid;
+            grid-template-columns: repeat(4, 60px);
+            grid-template-rows: repeat(4, 60px);
+            gap: 5px;
+            justify-content: center;
+            margin: 0 auto;
+            /* 迷路のゴールを視覚的にわかりやすくするための枠線 */
+            border-top: 5px solid #cc0000;
+            border-bottom: 5px solid #cc0000;
+            border-left: 5px solid #0000cc;
+            border-right: 5px solid #0000cc;
+            padding: 5px;
+            background-color: #fff;
+            width: fit-content;
+        }
+
+        .card {
+            width: 60px;
+            height: 60px;
+            background-color: #888;
+            color: transparent;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            font-weight: bold;
+            cursor: pointer;
+            user-select: none;
+            border-radius: 5px;
+            border: 2px solid #555;
+            transition: background-color 0.3s, color 0.3s;
+        }
+
+        /* めくられた状態 */
+        .card.flipped {
+            background-color: #fff;
+            color: #333;
+            border-color: #333;
+            cursor: default;
+        }
+
+        /* 確定した状態（赤） */
+        .card.red {
+            background-color: #ffcccc;
+            color: #cc0000;
+            border-color: #cc0000;
+            cursor: default;
+        }
+
+        /* 確定した状態（青） */
+        .card.blue {
+            background-color: #ccccff;
+            color: #0000cc;
+            border-color: #0000cc;
+            cursor: default;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>神経コネクト</h1>
+    <div id="status" class="turn-red">赤のターン (上から下へ繋げ！)</div>
+    <div id="game-board"></div>
+
+    <script>
+        const BOARD_SIZE = 4;
+        let boardState = Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(null));
+        let currentPlayer = 'red'; // 'red' or 'blue'
+        let selectedCards = [];
+        let lockBoard = false;
+        let isGameOver = false;
+
+        // 8方向（縦、横、斜め）の繋がりをチェックするための配列
+        const directions = [
+            [-1, -1], [-1, 0], [-1, 1],
+            [0, -1],           [0, 1],
+            [1, -1],  [1, 0],  [1, 1]
+        ];
+
+        // ゲーム初期化
+        function initGame() {
+            const board = document.getElementById('game-board');
+            
+            // 1~18のペアを生成してシャッフル
+            let numbers = [];
+            for (let i = 1; i <= 8; i++) {
+                numbers.push(i, i);
+            }
+            numbers.sort(() => Math.random() - 0.5);
+
+            // ボードにカードを配置
+            for (let i = 0; i < 16; i++) {
+                const card = document.createElement('div');
+                card.classList.add('card');
+                card.dataset.value = numbers[i];
+                card.dataset.row = Math.floor(i / BOARD_SIZE);
+                card.dataset.col = i % BOARD_SIZE;
+                
+                card.addEventListener('click', () => flipCard(card));
+                board.appendChild(card);
+            }
+        }
+
+        // カードをめくる処理
+        function flipCard(card) {
+            if (isGameOver || lockBoard || card.classList.contains('flipped') || card.classList.contains('red') || card.classList.contains('blue')) {
+                return;
+            }
+
+            card.classList.add('flipped');
+            card.textContent = card.dataset.value;
+            selectedCards.push(card);
+
+            if (selectedCards.length === 2) {
+                checkMatch();
+            }
+        }
+
+        // ペアの一致判定
+        function checkMatch() {
+            const [card1, card2] = selectedCards;
+            const isMatch = card1.dataset.value === card2.dataset.value;
+
+            if (isMatch) {
+                // 揃った場合：現在のプレイヤーの色にする
+                card1.classList.remove('flipped');
+                card2.classList.remove('flipped');
+                card1.classList.add(currentPlayer);
+                card2.classList.add(currentPlayer);
+
+                // 状態配列を更新
+                boardState[card1.dataset.row][card1.dataset.col] = currentPlayer;
+                boardState[card2.dataset.row][card2.dataset.col] = currentPlayer;
+
+                selectedCards = [];
+
+                // 勝利判定
+                if (checkWin(currentPlayer)) {
+                    isGameOver = true;
+                    document.getElementById('status').textContent = `${currentPlayer === 'red' ? '赤' : '青'}プレイヤーの勝利！！`;
+                    return;
+                }
+
+                // 引き続き同じプレイヤーのターン（何もしない）
+                updateStatusText("揃った！もう1回あなたのターンです。");
+                
+            } else {
+                // 揃わなかった場合：1秒後に裏返して交代
+                lockBoard = true;
+                updateStatusText("残念...");
+
+                setTimeout(() => {
+                    card1.classList.remove('flipped');
+                    card1.textContent = '';
+                    card2.classList.remove('flipped');
+                    card2.textContent = '';
+                    
+                    selectedCards = [];
+                    // プレイヤー交代
+                    currentPlayer = currentPlayer === 'red' ? 'blue' : 'red';
+                    updateStatusDisplay();
+                    lockBoard = false;
+                }, 1000);
+            }
+        }
+
+        // ステータス表示の更新
+        function updateStatusDisplay() {
+            const statusDiv = document.getElementById('status');
+            if (currentPlayer === 'red') {
+                statusDiv.className = 'turn-red';
+                statusDiv.textContent = '赤のターン (上から下へ繋げ！)';
+            } else {
+                statusDiv.className = 'turn-blue';
+                statusDiv.textContent = '青のターン (左から右へ繋げ！)';
+            }
+        }
+
+        function updateStatusText(msg) {
+            const statusDiv = document.getElementById('status');
+            const turnText = currentPlayer === 'red' ? '赤' : '青';
+            statusDiv.textContent = `${turnText}のターン: ${msg}`;
+        }
+
+        // 勝利判定 (幅優先探索 - BFS)
+        function checkWin(player) {
+            let queue = [];
+            let visited = Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(false));
+
+            // スタート地点をキューに入れる
+            if (player === 'red') {
+                // 赤は一番上の行（row 0）からスタート
+                for (let c = 0; c < BOARD_SIZE; c++) {
+                    if (boardState[0][c] === 'red') {
+                        queue.push([0, c]);
+                        visited[0][c] = true;
+                    }
+                }
+            } else {
+                // 青は一番左の列（col 0）からスタート
+                for (let r = 0; r < BOARD_SIZE; r++) {
+                    if (boardState[r][0] === 'blue') {
+                        queue.push([r, 0]);
+                        visited[r][0] = true;
+                    }
+                }
+            }
+
+            // 探索
+            while (queue.length > 0) {
+                const [r, c] = queue.shift();
+
+                // ゴール判定
+                if (player === 'red' && r === BOARD_SIZE - 1) return true; // 一番下の行に到達
+                if (player === 'blue' && c === BOARD_SIZE - 1) return true; // 一番右の列に到達
+
+                // 8方向をチェック（斜めの繋がりもOKとする仕様）
+                for (let [dr, dc] of directions) {
+                    let nr = r + dr;
+                    let nc = c + dc;
+
+                    // ボード内で、自分の色で、まだ訪問していないかチェック
+                    if (nr >= 0 && nr < BOARD_SIZE && nc >= 0 && nc < BOARD_SIZE) {
+                        if (boardState[nr][nc] === player && !visited[nr][nc]) {
+                            visited[nr][nc] = true;
+                            queue.push([nr, nc]);
+                        }
+                    }
+                }
+            }
+            return false;
+        }
+
+        // ゲーム開始
+        initGame();
+    </script>
+</body>
+</html>
